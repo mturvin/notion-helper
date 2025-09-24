@@ -1,62 +1,47 @@
+import fetch from "node-fetch";
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed. Use POST." });
   }
 
-  try {
-    const {
-      title,
-      division,
-      itemType,
-      status,
-      mode,
-      riskTier,
-      confidenceLevel,
-      debug = false // toggle for diagnostic fallback
-    } = req.body;
+  const { title, division, itemType, status, mode, riskTier, confidenceLevel, debug } = req.body;
 
-    // Always map simple keys → exact Notion property names
-    const notionPayload = {
-      parent: { database_id: process.env.NOTION_DATABASE_ID },
-      properties: {
-        Title: {
-          title: [{ text: { content: title } }]
-        },
-        Division: {
-          select: { name: division }
-        },
-        "Item Type": {
-          select: { name: itemType }
-        },
-        Status: {
-          select: { name: status }
-        },
-        Mode: {
-          select: { name: mode }
-        },
-        "Risk Tier": {
-          select: { name: riskTier }
-        },
-        "Confidence Level": {
-          select: { name: confidenceLevel }
-        }
-      }
-    };
-
-    // If debug flag set, just echo back payload instead of hitting Notion
-    if (debug) {
-      return res.status(200).json({
-        message: "Diagnostic mode enabled — Notion call skipped.",
-        received: req.body,
-        translatedPayload: notionPayload
-      });
+  // Map from simple keys -> exact Notion property names
+  const notionPayload = {
+    parent: { database_id: process.env.NOTION_DATABASE_ID },
+    properties: {
+      "Title": {
+        title: [{ text: { content: title || "Untitled" } }]
+      },
+      "Division": division ? { select: { name: division } } : undefined,
+      "Item Type": itemType ? { select: { name: itemType } } : undefined,
+      "Status": status ? { select: { name: status } } : undefined,
+      "Mode": mode ? { select: { name: mode } } : undefined,
+      "Risk Tier": riskTier ? { select: { name: riskTier } } : undefined,
+      "Confidence Level": confidenceLevel ? { select: { name: confidenceLevel } } : undefined
     }
+  };
 
-    // Otherwise, try pushing to Notion
+  // Remove undefined fields
+  Object.keys(notionPayload.properties).forEach(
+    key => notionPayload.properties[key] === undefined && delete notionPayload.properties[key]
+  );
+
+  // Debug mode: echo payload back without calling Notion
+  if (debug) {
+    return res.status(200).json({
+      mode: "debug",
+      received: req.body,
+      mappedForNotion: notionPayload.properties
+    });
+  }
+
+  try {
     const response = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.NOTION_TOKEN}`,
+        "Authorization": `Bearer ${process.env.NOTION_TOKEN}`,
         "Content-Type": "application/json",
         "Notion-Version": "2022-06-28"
       },
@@ -66,24 +51,21 @@ export default async function handler(req, res) {
     const data = await response.json();
 
     if (!response.ok) {
-      // Instead of generic failure, fall back to diagnostic response
-      return res.status(500).json({
+      return res.status(response.status).json({
         error: "Notion API error",
-        requestBody: req.body,
-        translatedPayload: notionPayload,
-        notionResponse: data
+        details: data
       });
     }
 
-    res.status(200).json({
-      message: "Governance draft created successfully",
+    return res.status(200).json({
+      success: true,
       notionResponse: data
     });
+
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-      stack: error.stack,
-      requestBody: req.body
+    return res.status(500).json({
+      error: "Server error",
+      details: error.message
     });
   }
 }
