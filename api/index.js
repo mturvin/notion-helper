@@ -1,4 +1,4 @@
-import { Client } from "@notionhq/client";
+import fetch from "node-fetch";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -8,26 +8,44 @@ export default async function handler(req, res) {
   try {
     const { title, division, status } = req.body;
 
-    const notion = new Client({ auth: process.env.NOTION_TOKEN });
+    if (!title || !division || !status) {
+      return res.status(400).json({ error: "Missing required fields: title, division, status" });
+    }
 
-    const response = await notion.pages.create({
-      parent: { database_id: process.env.NOTION_DATABASE_ID },
-      properties: {
-        Title: {
-          title: [{ text: { content: title || "Untitled Governance Draft" } }]
-        },
-        Division: {
-          rich_text: [{ text: { content: division || "Unassigned" } }]
-        },
-        Status: {
-          select: { name: status || "Draft" }
+    // Use your real Governance Intake DB ID here
+    const notionDatabaseId = process.env.GOVERNANCE_DB_ID;
+
+    const response = await fetch("https://api.notion.com/v1/pages", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.NOTION_TOKEN}`,
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28"
+      },
+      body: JSON.stringify({
+        parent: { database_id: notionDatabaseId },
+        properties: {
+          Title: {
+            title: [{ text: { content: title } }]
+          },
+          Division: {
+            select: { name: division }
+          },
+          Status: {
+            select: { name: status }
+          }
         }
-      }
+      })
     });
 
-    res.status(200).json({ success: true, pageId: response.id });
+    if (!response.ok) {
+      const errorDetails = await response.text();
+      return res.status(response.status).json({ error: errorDetails });
+    }
+
+    const data = await response.json();
+    return res.status(200).json({ message: "Page created successfully", data });
   } catch (error) {
-    console.error("Error creating page in Notion:", error);
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
   }
 }
