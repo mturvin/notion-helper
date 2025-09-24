@@ -4,9 +4,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { title, division, itemType, status, mode, riskTier, confidenceLevel } = req.body;
+    const {
+      title,
+      division,
+      itemType,
+      status,
+      mode,
+      riskTier,
+      confidenceLevel,
+      debug = false // toggle for diagnostic fallback
+    } = req.body;
 
-    // Translate inputs → exact Notion property names
+    // Always map simple keys → exact Notion property names
     const notionPayload = {
       parent: { database_id: process.env.NOTION_DATABASE_ID },
       properties: {
@@ -34,6 +43,16 @@ export default async function handler(req, res) {
       }
     };
 
+    // If debug flag set, just echo back payload instead of hitting Notion
+    if (debug) {
+      return res.status(200).json({
+        message: "Diagnostic mode enabled — Notion call skipped.",
+        received: req.body,
+        translatedPayload: notionPayload
+      });
+    }
+
+    // Otherwise, try pushing to Notion
     const response = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
       headers: {
@@ -47,9 +66,12 @@ export default async function handler(req, res) {
     const data = await response.json();
 
     if (!response.ok) {
+      // Instead of generic failure, fall back to diagnostic response
       return res.status(500).json({
         error: "Notion API error",
-        details: data
+        requestBody: req.body,
+        translatedPayload: notionPayload,
+        notionResponse: data
       });
     }
 
@@ -60,7 +82,8 @@ export default async function handler(req, res) {
   } catch (error) {
     res.status(500).json({
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
+      requestBody: req.body
     });
   }
 }
