@@ -4,38 +4,26 @@ import fetch from "node-fetch";
 const app = express();
 app.use(express.json());
 
-// Map *multiple aliases* to the same database ID
+// Map aliases to database IDs
 const DB_MAP = {
-  "governance_intake": "2673b7feea95812da93ae51f71d02291",
-  "Governance Intake": "2673b7feea95812da93ae51f71d02291",
-  "intake": "2673b7feea95812da93ae51f71d02291",
-
-  "learning": "2763b7feea9580cca42bce1940e18dc6",
-  "Learning": "2763b7feea9580cca42bce1940e18dc6",
-  "learning db": "2763b7feea9580cca42bce1940e18dc6"
+  "Governance Intake": "2673b7feea95812da93ae51f71d02291"
 };
 
-// Root route — for health check
+// Health check
 app.get("/", (req, res) => {
-  res.send("Notion Helper is running ✅");
+  res.send("✅ Notion Helper is running");
 });
 
-// Route to create new Notion pages
+// Create a new page
 app.post("/pages", async (req, res) => {
   try {
-    const body = { ...req.body };
+    const { parent, properties } = req.body;
 
-    // Swap alias for the real database_id
-    if (body.parent?.alias) {
-      const dbId = DB_MAP[body.parent.alias];
-      if (!dbId) {
-        return res.status(400).json({ error: `Unknown database alias: ${body.parent.alias}` });
-      }
-      body.parent.database_id = dbId;
-      delete body.parent.alias;
+    const dbId = DB_MAP[parent.alias];
+    if (!dbId) {
+      return res.status(400).json({ error: `Unknown DB alias: ${parent.alias}` });
     }
 
-    // Forward the request to Notion
     const notionRes = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
       headers: {
@@ -43,14 +31,16 @@ app.post("/pages", async (req, res) => {
         "Notion-Version": "2022-06-28",
         "Content-Type": "application/json"
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        parent: { database_id: dbId },
+        properties
+      })
     });
 
     const data = await notionRes.json();
     res.status(notionRes.status).json(data);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(500).json({ error: err.message });
   }
 });
 
