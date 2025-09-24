@@ -4,11 +4,21 @@ import fetch from "node-fetch";
 const app = express();
 app.use(express.json());
 
-// Map simple aliases to your real Notion DB IDs
+// Map *multiple aliases* to the same database ID
 const DB_MAP = {
-  governance_intake: "2673b7feea95812da93ae51f71d02291",
-  learning: "2763b7feea9580cca42bce1940e18dc6"
+  "governance_intake": "2673b7feea95812da93ae51f71d02291",
+  "Governance Intake": "2673b7feea95812da93ae51f71d02291",
+  "intake": "2673b7feea95812da93ae51f71d02291",
+
+  "learning": "2763b7feea9580cca42bce1940e18dc6",
+  "Learning": "2763b7feea9580cca42bce1940e18dc6",
+  "learning db": "2763b7feea9580cca42bce1940e18dc6"
 };
+
+// Root route — for health check
+app.get("/", (req, res) => {
+  res.send("Notion Helper is running ✅");
+});
 
 // Route to create new Notion pages
 app.post("/pages", async (req, res) => {
@@ -19,7 +29,7 @@ app.post("/pages", async (req, res) => {
     if (body.parent?.alias) {
       const dbId = DB_MAP[body.parent.alias];
       if (!dbId) {
-        return res.status(400).json({ error: "Unknown database alias" });
+        return res.status(400).json({ error: `Unknown database alias: ${body.parent.alias}` });
       }
       body.parent.database_id = dbId;
       delete body.parent.alias;
